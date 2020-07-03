@@ -6,15 +6,14 @@ import (
 	"path/filepath"
 	"sort"
 	"syscall"
-	"time"
 
 	"github.com/alecthomas/kingpin"
 )
 
 type file struct {
 	path     string
-	modified time.Time
-	blocks   int64
+	modified int32 // epoch hours
+	blocks   int32 // whatever size the fs uses
 }
 
 func main() {
@@ -36,14 +35,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	minBlocksFree := int64(fs.Blocks) * int64(minBlocksFreePct) / 100
+	minBlocksFree := int32(fs.Blocks) * int32(minBlocksFreePct) / 100
 	minFilesFree := int64(fs.Files) * int64(minFilesFreePct) / 100
 
-	if int64(fs.Bavail) > minBlocksFree && int64(fs.Ffree) > minFilesFree {
+	if int32(fs.Bavail) > minBlocksFree && int64(fs.Ffree) > minFilesFree {
 		return
 	}
 
-	needBlocks := minBlocksFree - int64(fs.Bavail)
+	needBlocks := minBlocksFree - int32(fs.Bavail)
 	needFiles := minFilesFree - int64(fs.Ffree)
 
 	var files []file
@@ -57,8 +56,8 @@ func main() {
 
 		files = append(files, file{
 			path:     path,
-			modified: fi.ModTime(),
-			blocks:   1 + fi.Size()/int64(fs.Bsize),
+			modified: int32(fi.ModTime().Unix() / 3600),
+			blocks:   int32(1 + fi.Size()/int64(fs.Bsize)),
 		})
 
 		return nil
@@ -69,7 +68,7 @@ func main() {
 	}
 
 	sort.Slice(files, func(a, b int) bool {
-		return files[a].modified.Before(files[b].modified)
+		return files[a].modified < files[b].modified
 	})
 
 	for _, f := range files {
